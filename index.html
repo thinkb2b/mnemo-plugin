@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mnemo Intelligent Snippets</title>
+  
+  <!-- Office.js MUSS als erstes geladen werden -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #f8fafc;
+    }
+    
+    #root {
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    .loading-spinner {
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #3b82f6;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; color: #64748b;">
+      <div class="loading-spinner"></div>
+      <p style="margin-top: 1rem; font-size: 0.875rem; font-weight: 500;">Mnemo wird geladen...</p>
+    </div>
+  </div>
+  
+  <!-- Vite wird das automatisch durch src/index.tsx ersetzen -->
+  <script type="module" src="/src/index.tsx"></script>
+</body>
+</html>

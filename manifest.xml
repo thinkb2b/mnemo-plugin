@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp
+  xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides"
+  xsi:type="MailApp">
+
+  <Id>a7c3e8d2-4b1f-4e9a-8c5d-1a2b3c4d5e6f</Id>
+  <Version>1.0.0.1</Version>
+  <ProviderName>Mnemo</ProviderName>
+  <DefaultLocale>de-DE</DefaultLocale>
+  <DisplayName DefaultValue="Mnemo Intelligent Snippets" />
+  <Description DefaultValue="Textbausteine mit KI-Unterstützung für Outlook" />
+  
+  <!-- WICHTIG: Ersetze DEINE_APP_URL durch deine echte Render.com URL -->
+  <IconUrl DefaultValue="https://DEINE_APP_URL.onrender.com/icon-64.png" />
+  <HighResolutionIconUrl DefaultValue="https://DEINE_APP_URL.onrender.com/icon-128.png" />
+  <SupportUrl DefaultValue="https://DEINE_APP_URL.onrender.com" />
+  
+  <AppDomains>
+    <AppDomain>https://DEINE_APP_URL.onrender.com</AppDomain>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Mailbox" />
+  </Hosts>
+
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.1" />
+    </Sets>
+  </Requirements>
+
+  <FormSettings>
+    <Form xsi:type="ItemEdit">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="https://DEINE_APP_URL.onrender.com/index.html" />
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+
+  <Permissions>ReadWriteItem</Permissions>
+
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit" />
+    <Rule xsi:type="ItemIs" ItemType="Appointment" FormType="Edit" />
+  </Rule>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="msgComposeGroup">
+                <Label resid="groupLabel" />
+                <Control xsi:type="Button" id="msgComposeOpenPaneButton">
+                  <Label resid="paneLabel" />
+                  <Supertip>
+                    <Title resid="paneLabel" />
+                    <Description resid="paneDesc" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="icon16" />
+                    <bt:Image size="32" resid="icon32" />
+                    <bt:Image size="80" resid="icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="taskpaneUrl" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon16" DefaultValue="https://DEINE_APP_URL.onrender.com/icon-16.png" />
+        <bt:Image id="icon32" DefaultValue="https://DEINE_APP_URL.onrender.com/icon-32.png" />
+        <bt:Image id="icon80" DefaultValue="https://DEINE_APP_URL.onrender.com/icon-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="taskpaneUrl" DefaultValue="https://DEINE_APP_URL.onrender.com/index.html" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="groupLabel" DefaultValue="Mnemo" />
+        <bt:String id="paneLabel" DefaultValue="Snippets öffnen" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="paneDesc" DefaultValue="Textbausteine einfügen" />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
