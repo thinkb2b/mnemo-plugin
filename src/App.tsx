@@ -48,6 +48,25 @@ const extractVariables = (text: string): string[] => {
   return Array.from(matches);
 };
 
+
+const getInputTypeForVariable = (variableName: string): 'text' | 'date' | 'time' | 'datetime-local' => {
+  const normalized = variableName.toLowerCase();
+
+  if (normalized.includes('datum') || normalized.includes('date')) {
+    return 'date';
+  }
+
+  if (normalized.includes('uhrzeit') || normalized.includes('zeit') || normalized.includes('time')) {
+    return 'time';
+  }
+
+  if (normalized.includes('termin') || normalized.includes('datetime')) {
+    return 'datetime-local';
+  }
+
+  return 'text';
+};
+
 // UI Components
 const Button = ({ 
   children, 
@@ -275,6 +294,24 @@ export default function App() {
       executeInsert(snippet, {});
     }
   };
+  const insertIntoOutlook = async (finalSubject: string, finalBody: string) => {
+    await setBodyHtmlAsync(finalBody.replace(/\n/g, '<br/>'));
+
+    if (Office.context.mailbox.item.subject) {
+      await setSubjectAsync(finalSubject);
+    }
+  };
+
+  const dispatchInsertRequestToMainWindow = (finalSubject: string, finalBody: string) => {
+    localStorage.setItem(
+      INSERT_REQUEST_KEY,
+      JSON.stringify({
+        id: Date.now(),
+        subject: finalSubject,
+        body: finalBody,
+      })
+    );
+  };
 
   const executeInsert = async (snippet: Snippet, values: Record<string, string>) => {
     let finalSubject = snippet.subject;
@@ -291,6 +328,13 @@ export default function App() {
       finalBody += account.signature;
     }
 
+    if (IS_POPUP_WINDOW) {
+      dispatchInsertRequestToMainWindow(finalSubject, finalBody);
+      alert('Inhalt wurde an das Outlook-Hauptfenster übergeben und wird dort eingefügt.');
+      setView('LIST');
+      return;
+    }
+
     if (isOfficeInitialized) {
       try {
         await setBodyHtmlAsync(finalBody.replace(/\n/g, '<br/>'));
@@ -302,12 +346,16 @@ export default function App() {
         setView('LIST');
       } catch (e) {
         console.error('Outlook Insert Fehler:', e);
-        alert("Fehler beim Einfügen in Outlook.");
+        alert('Fehler beim Einfügen in Outlook.');
       }
     } else {
-      const fullText = `Betreff: ${finalSubject}\n\n${finalBody}`;
+      const fullText = `Betreff: ${finalSubject}
+
+${finalBody}`;
       navigator.clipboard.writeText(fullText);
-      alert(`In Zwischenablage kopiert (Browser-Modus):\n\n${fullText.substring(0, 100)}...`);
+      alert(`In Zwischenablage kopiert (Browser-Modus):
+
+${fullText.substring(0, 100)}...`);
       setView('LIST');
     }
   };
@@ -607,10 +655,11 @@ export default function App() {
             <div key={v}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{v}</label>
               <input 
+                type={getInputTypeForVariable(v)}
                 className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border"
                 value={variableValues[v] || ''}
                 onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
-                placeholder={`Wert für ${v}...`}
+                placeholder={getInputTypeForVariable(v) === 'text' ? `Wert für ${v}...` : undefined}
               />
             </div>
           ))}
