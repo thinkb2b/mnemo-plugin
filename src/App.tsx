@@ -100,7 +100,6 @@ const WINDOW_MODE_PARAM = new URLSearchParams(window.location.search).get('mode'
 const VIEW_PARAM = new URLSearchParams(window.location.search).get('view') as ViewState | null;
 const IS_POPUP_WINDOW = WINDOW_MODE_PARAM === 'popup';
 const WINDOW_SETTING_KEY = 'mnemo.openInSeparateWindow';
-const INSERT_REQUEST_KEY = 'mnemo.insertRequest';
 
 export default function App() {
   const [view, setView] = useState<ViewState>('LIST');
@@ -188,26 +187,6 @@ export default function App() {
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
-
-
-  useEffect(() => {
-    const handleInsertRequest = async (event: StorageEvent) => {
-      if (IS_POPUP_WINDOW || !isOfficeInitialized || event.key !== INSERT_REQUEST_KEY || !event.newValue) {
-        return;
-      }
-
-      try {
-        const payload = JSON.parse(event.newValue) as { subject: string; body: string };
-        await insertIntoOutlook(payload.subject || '', payload.body || '');
-        setView('LIST');
-      } catch (error) {
-        console.error('Insert-Bridge Fehler:', error);
-      }
-    };
-
-    window.addEventListener('storage', handleInsertRequest);
-    return () => window.removeEventListener('storage', handleInsertRequest);
-  }, [isOfficeInitialized]);
 
   useEffect(() => {
     if (!IS_POPUP_WINDOW || !VIEW_PARAM) return;
@@ -358,7 +337,12 @@ export default function App() {
 
     if (isOfficeInitialized) {
       try {
-        await insertIntoOutlook(finalSubject, finalBody);
+        await setBodyHtmlAsync(finalBody.replace(/\n/g, '<br/>'));
+        
+        if (Office.context.mailbox.item.subject) {
+          await setSubjectAsync(finalSubject);
+        }
+        
         setView('LIST');
       } catch (e) {
         console.error('Outlook Insert Fehler:', e);
