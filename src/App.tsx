@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Plus, Settings, Mail, Search, Folder, Edit3, Trash2, Send, 
-  ArrowLeft, Sparkles, RefreshCw, X, Save, Link, Link2Off, Info
+  ArrowLeft, Sparkles, RefreshCw, X, Save, Link, Link2Off, Info, Calendar, Clock3
 } from 'lucide-react';
 import type { Snippet, Group, ViewState, SnippetFormData, SenderAccount } from './types';
 import { generateSnippet } from './services/geminiService';
@@ -429,6 +429,7 @@ ${fullText.substring(0, 100)}...`);
       </button>
     </div>
   );
+};
 
   const renderWindowLauncher = () => (
     <div className="flex flex-col h-full bg-gray-50 p-4 gap-4">
