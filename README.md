@@ -97,6 +97,11 @@ Dann muss ein Administrator das Add-in bereitstellen:
   - `index.html` direkt im Browser testen.
   - Browser-DevTools im WebView2/OWA auf JS-Fehler prüfen.
 
+- **Build auf Render schlägt mit `Unexpected "}"` fehl**
+  - Sicherstellen, dass der neueste Commit deployt wird (nicht ein älterer fehlerhafter Stand).
+  - In Render einmal `Clear build cache` ausführen und neu deployen.
+  - Lokal zur Verifikation `npm run build` ausführen.
+
 - **Einfügen in Betreff/Body klappt nicht**
   - Der Code nutzt nun Promise-Wrapper um `setSelectedDataAsync`/`setAsync`; dadurch werden echte Office-Fehler sauber angezeigt.
 
