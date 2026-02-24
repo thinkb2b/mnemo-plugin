@@ -226,7 +226,7 @@ export default function App() {
   const handleCreate = () => {
     setEditorData({ title: '', subject: '', body: '', groupId: groups[0]?.id || 'g1' });
     setCurrentSnippet(null);
-    setView('CREATE');
+    handleNavigate('CREATE');
   };
 
   const handleEdit = (snippet: Snippet) => {
@@ -340,6 +340,13 @@ export default function App() {
       finalBody += account.signature;
     }
 
+    if (IS_POPUP_WINDOW) {
+      dispatchInsertRequestToMainWindow(finalSubject, finalBody);
+      alert('Inhalt wurde an das Outlook-Hauptfenster übergeben und wird dort eingefügt.');
+      setView('LIST');
+      return;
+    }
+
     if (isOfficeInitialized) {
       try {
         await insertIntoOutlook(finalSubject, finalBody);
@@ -413,7 +420,7 @@ ${fullText.substring(0, 200)}...`);
       className={`${isCompactLayout ? 'py-2 space-y-2' : 'py-4 space-y-4'} bg-white border-r border-gray-200 flex flex-col items-center`}
       style={{ width: `${sidebarWidth}px` }}>
       <button 
-        onClick={() => setView('LIST')}
+        onClick={() => handleNavigate('LIST')}
         className={`p-2 rounded-xl transition-all ${view === 'LIST' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
         aria-label="Bibliothek"
       >
@@ -428,14 +435,14 @@ ${fullText.substring(0, 200)}...`);
       </button>
       <div className="flex-grow" />
       <button 
-        onClick={() => setView('SETTINGS')}
+        onClick={() => handleNavigate('SETTINGS')}
         className={`p-2 rounded-xl transition-all ${view === 'SETTINGS' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
         aria-label="Einstellungen"
       >
         <Settings className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
       <button 
-        onClick={() => setView('INFO')}
+        onClick={() => handleNavigate('INFO')}
         className={`p-2 rounded-xl transition-all ${view === 'INFO' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
         aria-label="Info"
       >
@@ -563,7 +570,7 @@ ${fullText.substring(0, 200)}...`);
   const renderEditor = () => (
     <div className="flex flex-col h-full bg-white">
       <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-        <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700">
+        <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="font-bold text-lg">{view === 'CREATE' ? 'Neues Snippet' : 'Snippet bearbeiten'}</h2>
@@ -653,7 +660,7 @@ ${fullText.substring(0, 200)}...`);
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="p-4 border-b border-gray-200 flex items-center">
-          <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
+          <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h2 className="font-bold text-gray-800">Variablen ausfüllen</h2>
@@ -715,7 +722,7 @@ ${fullText.substring(0, 200)}...`);
         </div>
 
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-          <Button variant="secondary" onClick={() => setView('LIST')}>Abbrechen</Button>
+          <Button variant="secondary" onClick={() => handleNavigate('LIST')}>Abbrechen</Button>
           <Button onClick={() => executeInsert(currentSnippet, variableValues)} icon={Send}>
             Einfügen
           </Button>
@@ -727,7 +734,7 @@ ${fullText.substring(0, 200)}...`);
   const renderSettings = () => (
     <div className="flex flex-col h-full bg-white overflow-y-auto">
       <div className="p-4 border-b border-gray-200 flex items-center">
-        <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
+        <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="font-bold text-lg">Einstellungen</h2>
@@ -807,7 +814,7 @@ ${fullText.substring(0, 200)}...`);
   const renderInfo = () => (
     <div className="flex flex-col h-full bg-white overflow-y-auto">
       <div className="p-4 border-b border-gray-200 flex items-center">
-        <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
+        <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="font-bold">Info</h2>
