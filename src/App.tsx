@@ -106,7 +106,7 @@ export default function App() {
   const [groups, setGroups] = useState<Group[]>(INITIAL_GROUPS);
   const [accounts, setAccounts] = useState<SenderAccount[]>(INITIAL_ACCOUNTS);
   
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentSnippet, setCurrentSnippet] = useState<Snippet | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
@@ -140,12 +140,23 @@ export default function App() {
     });
   };
 
+  const getBodyTypeAsync = (): Promise<Office.CoercionType> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.body.getTypeAsync((result: Office.AsyncResult<Office.CoercionType>) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve(result.value || Office.CoercionType.Html);
+        } else {
+          reject(new Error(result.error?.message || 'Body-Typ konnte nicht gelesen werden.'));
+        }
+      });
+    });
+  };
 
-  const insertSelectedBodyHtmlAsync = (html: string): Promise<void> => {
+  const insertSelectedBodyAsync = (content: string, coercionType: Office.CoercionType): Promise<void> => {
     return new Promise((resolve, reject) => {
       Office.context.mailbox.item.body.setSelectedDataAsync(
-        html,
-        { coercionType: Office.CoercionType.Html },
+        content,
+        { coercionType },
         (result: Office.AsyncResult<void>) => {
           if (result.status === Office.AsyncResultStatus.Succeeded) {
             resolve();
@@ -157,10 +168,10 @@ export default function App() {
     });
   };
 
-  const getBodyHtmlAsync = (): Promise<string> => {
+  const getBodyAsync = (coercionType: Office.CoercionType): Promise<string> => {
     return new Promise((resolve, reject) => {
       Office.context.mailbox.item.body.getAsync(
-        Office.CoercionType.Html,
+        coercionType,
         (result: Office.AsyncResult<string>) => {
           if (result.status === Office.AsyncResultStatus.Succeeded) {
             resolve(result.value || '');
@@ -172,11 +183,11 @@ export default function App() {
     });
   };
 
-  const setBodyHtmlAsync = (html: string): Promise<void> => {
+  const setBodyAsync = (content: string, coercionType: Office.CoercionType): Promise<void> => {
     return new Promise((resolve, reject) => {
       Office.context.mailbox.item.body.setAsync(
-        html,
-        { coercionType: Office.CoercionType.Html },
+        content,
+        { coercionType },
         (result: Office.AsyncResult<void>) => {
           if (result.status === Office.AsyncResultStatus.Succeeded) {
             resolve();
@@ -235,6 +246,21 @@ export default function App() {
     }
   };
 
+
+  const toggleGroupSelection = (groupId: string | null) => {
+    if (!groupId) {
+      setSelectedGroups([]);
+      return;
+    }
+
+    setSelectedGroups((prev) => {
+      if (prev.includes(groupId)) {
+        return prev.filter((id) => id !== groupId);
+      }
+      return [...prev, groupId];
+    });
+  };
+
   const handleSave = () => {
     const variables = extractVariables(editorData.subject + ' ' + editorData.body);
     
@@ -280,14 +306,17 @@ export default function App() {
     }
   };
   const insertIntoOutlook = async (finalSubject: string, finalBody: string) => {
-    const html = finalBody.replace(/\n/g, '<br/>');
+    const bodyType = await getBodyTypeAsync();
+    const isHtml = bodyType === Office.CoercionType.Html;
+    const content = isHtml ? finalBody.replace(/\n/g, '<br/>') : finalBody;
 
     try {
-      await insertSelectedBodyHtmlAsync(html);
+      await insertSelectedBodyAsync(content, bodyType);
     } catch (error) {
       console.warn('setSelectedDataAsync fehlgeschlagen, fallback auf setAsync:', error);
-      const currentBody = await getBodyHtmlAsync();
-      await setBodyHtmlAsync(`${currentBody}<br/>${html}`);
+      const currentBody = await getBodyAsync(bodyType);
+      const merged = isHtml ? `${currentBody}<br/>${content}` : `${currentBody}\n\n${content}`;
+      await setBodyAsync(merged, bodyType);
     }
 
     if (Office.context.mailbox.item.subject) {
@@ -374,7 +403,7 @@ ${fullText.substring(0, 200)}...`);
   const handleDeleteGroup = (id: string) => {
     if (confirm('Kategorie löschen?')) {
       setGroups(groups.filter(g => g.id !== id));
-      if (selectedGroup === id) setSelectedGroup(null);
+      setSelectedGroups(prev => prev.filter(groupId => groupId !== id));
       if (editingGroupId === id) {
         setEditingGroupId(null);
         setNewGroupName('');
@@ -425,7 +454,7 @@ ${fullText.substring(0, 200)}...`);
 
   const renderSnippetList = () => {
     const filtered = snippets.filter(s => {
-      const matchesGroup = selectedGroup ? s.groupId === selectedGroup : true;
+      const matchesGroup = selectedGroups.length > 0 ? selectedGroups.includes(s.groupId) : true;
       const matchesSearch = s.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             s.subject.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesGroup && matchesSearch;
@@ -451,17 +480,38 @@ ${fullText.substring(0, 200)}...`);
           </div>
 
           <div className="bg-gray-100 rounded-md p-2">
-            <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Kategorie</label>
-            <select
-              value={selectedGroup || ''}
-              onChange={(e) => setSelectedGroup(e.target.value || null)}
-              className="w-full bg-white border border-gray-200 rounded-md text-sm px-2 py-1.5"
-            >
-              <option value="">Alle</option>
-              {groups.map(g => (
-                <option key={g.id} value={g.id}>{g.name}</option>
-              ))}
-            </select>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] uppercase tracking-wide text-gray-500">Kategorien</label>
+              {selectedGroups.length > 0 && (
+                <button
+                  onClick={() => setSelectedGroups([])}
+                  className="text-[11px] text-blue-600 hover:text-blue-700"
+                >
+                  Zurücksetzen
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <button
+                onClick={() => toggleGroupSelection(null)}
+                className={`px-2 py-1 rounded-full text-[11px] font-medium border ${selectedGroups.length === 0 ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-700 border-gray-200'}`}
+              >
+                Alle
+              </button>
+              {groups.map(g => {
+                const isSelected = selectedGroups.includes(g.id);
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => toggleGroupSelection(g.id)}
+                    className={`px-2 py-1 rounded-full text-[11px] font-medium border flex items-center gap-1 ${isSelected ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-white text-gray-700 border-gray-200'}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${g.color}`} />
+                    {g.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
