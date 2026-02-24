@@ -128,7 +128,20 @@ export default function App() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const setBodyHtmlAsync = (html: string): Promise<void> => {
+  const setSubjectAsync = (subject: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.subject.setAsync(subject, (result: Office.AsyncResult<void>) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve();
+        } else {
+          reject(new Error(result.error?.message || 'Betreff konnte nicht gesetzt werden.'));
+        }
+      });
+    });
+  };
+
+
+  const insertSelectedBodyHtmlAsync = (html: string): Promise<void> => {
     return new Promise((resolve, reject) => {
       Office.context.mailbox.item.body.setSelectedDataAsync(
         html,
@@ -144,15 +157,34 @@ export default function App() {
     });
   };
 
-  const setSubjectAsync = (subject: string): Promise<void> => {
+  const getBodyHtmlAsync = (): Promise<string> => {
     return new Promise((resolve, reject) => {
-      Office.context.mailbox.item.subject.setAsync(subject, (result: Office.AsyncResult<void>) => {
-        if (result.status === Office.AsyncResultStatus.Succeeded) {
-          resolve();
-        } else {
-          reject(new Error(result.error?.message || 'Betreff konnte nicht gesetzt werden.'));
+      Office.context.mailbox.item.body.getAsync(
+        Office.CoercionType.Html,
+        (result: Office.AsyncResult<string>) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve(result.value || '');
+          } else {
+            reject(new Error(result.error?.message || 'Body konnte nicht gelesen werden.'));
+          }
         }
-      });
+      );
+    });
+  };
+
+  const setBodyHtmlAsync = (html: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.body.setAsync(
+        html,
+        { coercionType: Office.CoercionType.Html },
+        (result: Office.AsyncResult<void>) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve();
+          } else {
+            reject(new Error(result.error?.message || 'Body konnte nicht gesetzt werden.'));
+          }
+        }
+      );
     });
   };
 
@@ -248,7 +280,15 @@ export default function App() {
     }
   };
   const insertIntoOutlook = async (finalSubject: string, finalBody: string) => {
-    await setBodyHtmlAsync(finalBody.replace(/\n/g, '<br/>'));
+    const html = finalBody.replace(/\n/g, '<br/>');
+
+    try {
+      await insertSelectedBodyHtmlAsync(html);
+    } catch (error) {
+      console.warn('setSelectedDataAsync fehlgeschlagen, fallback auf setAsync:', error);
+      const currentBody = await getBodyHtmlAsync();
+      await setBodyHtmlAsync(`${currentBody}<br/>${html}`);
+    }
 
     if (Office.context.mailbox.item.subject) {
       await setSubjectAsync(finalSubject);
@@ -290,11 +330,20 @@ export default function App() {
       const fullText = `Betreff: ${finalSubject}
 
 ${finalBody}`;
-      navigator.clipboard.writeText(fullText);
-      alert(`In Zwischenablage kopiert (Browser-Modus):
+      setView('LIST');
+
+      try {
+        await navigator.clipboard.writeText(fullText);
+        alert(`In Zwischenablage kopiert (Browser-Modus):
 
 ${fullText.substring(0, 100)}...`);
-      setView('LIST');
+      } catch {
+        alert(`Einfügen außerhalb von Outlook nicht direkt möglich.
+
+Bitte Text manuell übernehmen:
+
+${fullText.substring(0, 200)}...`);
+      }
     }
   };
 
@@ -401,23 +450,18 @@ ${fullText.substring(0, 100)}...`);
             />
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            <button 
-              onClick={() => setSelectedGroup(null)}
-              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${!selectedGroup ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-600'}`}
+          <div className="bg-gray-100 rounded-md p-2">
+            <label className="block text-[11px] uppercase tracking-wide text-gray-500 mb-1">Kategorie</label>
+            <select
+              value={selectedGroup || ''}
+              onChange={(e) => setSelectedGroup(e.target.value || null)}
+              className="w-full bg-white border border-gray-200 rounded-md text-sm px-2 py-1.5"
             >
-              Alle
-            </button>
-            {groups.map(g => (
-              <button 
-                key={g.id}
-                onClick={() => setSelectedGroup(g.id)}
-                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap flex items-center ${selectedGroup === g.id ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
-              >
-                <div className={`w-2 h-2 rounded-full mr-2 ${g.color}`} />
-                {g.name}
-              </button>
-            ))}
+              <option value="">Alle</option>
+              {groups.map(g => (
+                <option key={g.id} value={g.id}>{g.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
@@ -616,7 +660,7 @@ ${fullText.substring(0, 100)}...`);
                     <input
                       id={inputId}
                       type={inputType}
-                      className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 py-2 pr-2 pl-8 border"
+                      className="mnemo-picker-input w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 py-2 pr-2 pl-8 border"
                       value={variableValues[v] || ''}
                       onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
                     />
