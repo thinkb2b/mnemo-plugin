@@ -98,6 +98,34 @@ export default function App() {
   });
   const [isGenerating, setIsGenerating] = useState(false);
 
+  const setBodyHtmlAsync = (html: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.body.setSelectedDataAsync(
+        html,
+        { coercionType: Office.CoercionType.Html },
+        (result: Office.AsyncResult<void>) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve();
+          } else {
+            reject(new Error(result.error?.message || 'Body konnte nicht eingefügt werden.'));
+          }
+        }
+      );
+    });
+  };
+
+  const setSubjectAsync = (subject: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.subject.setAsync(subject, (result: Office.AsyncResult<void>) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve();
+        } else {
+          reject(new Error(result.error?.message || 'Betreff konnte nicht gesetzt werden.'));
+        }
+      });
+    });
+  };
+
   // Office Initialization
   useEffect(() => {
     if (typeof Office !== 'undefined') {
@@ -196,13 +224,10 @@ export default function App() {
 
     if (isOfficeInitialized) {
       try {
-        await Office.context.mailbox.item.body.setSelectedDataAsync(
-          finalBody.replace(/\n/g, '<br/>'),
-          { coercionType: Office.CoercionType.Html }
-        );
+        await setBodyHtmlAsync(finalBody.replace(/\n/g, '<br/>'));
         
         if (Office.context.mailbox.item.subject) {
-          await Office.context.mailbox.item.subject.setAsync(finalSubject);
+          await setSubjectAsync(finalSubject);
         }
         
         setView('LIST');
