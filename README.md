@@ -1,29 +1,5 @@
 # mnemo-plugin (Outlook Add-in)
 
-## Analyse: Warum es bei dir in Outlook (Version `1.2026.210.300`) nicht klappt
-
-Deine Versionsangaben zeigen, dass du das **neue Outlook für Windows** (WebView2-basiert) nutzt. In dieser Variante ist der Menüpfad für Sideloading je nach Tenant/Policy oft eingeschränkt oder anders als im klassischen Outlook.
-
-Im aktuellen Repo gibt es zusätzlich zwei harte technische Stolpersteine:
-
-1. Im Manifest stehen noch Platzhalter-URLs (`DEINE_APP_URL`). Ohne reale HTTPS-Ziele wird das Add-in nicht geladen.
-2. Das Manifest verweist auf mehrere Icons; wenn nur eins davon fehlt (404), lehnt Outlook das Add-in häufig ab.
-
-Zusätzlich wurde im Code der Office-Insert-Pfad bereits stabilisiert (Promise-Wrapper für Callback-APIs), damit Einfügefehler nicht stillschweigend verschwinden.
-
----
-
-## Voraussetzungen (für **neues Outlook** auf Windows 11)
-
-- Microsoft 365 **Arbeits-/Schulkonto** mit Exchange Online (kein reines POP/IMAP-Postfach).
-- Add-in-Sideloading ist im Tenant nicht blockiert (M365 Admin/Policy kann es deaktivieren).
-- Öffentlich erreichbare HTTPS-URL für die App (z. B. `https://mnemo-plugin.onrender.com`).
-- Folgende Dateien müssen über HTTPS erreichbar sein (HTTP 200):
-  - `/index.html`
-  - `/icon-16.png`, `/icon-32.png`, `/icon-64.png`, `/icon-80.png`, `/icon-128.png`
-
----
-
 ## Schritt-für-Schritt (zuverlässiger Weg für deine Outlook-Version)
 
 ### 1) Build erzeugen
@@ -36,6 +12,10 @@ npm run build
 ### 2) `dist/` deployen (HTTPS)
 
 Deploye den `dist/`-Inhalt auf eine öffentliche HTTPS-Domain.
+
+**Icons zentral auf Render hosten (ohne Binärdateien im Git):**
+- Das Projekt erzeugt die Icons beim Build automatisch per Skript (`npm run generate:icons`).
+- Dadurch werden die Dateien `public/icon-16.png` bis `public/icon-128.png` lokal generiert und mit in `dist/` übernommen, ohne dass PNG-Dateien versioniert werden müssen.
 
 ### 3) Manifest korrekt machen
 
