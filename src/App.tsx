@@ -67,8 +67,6 @@ const getInputTypeForVariable = (variableName: string): 'text' | 'date' | 'time'
   return 'text';
 };
 
-const clampSidebarWidth = (value: number) => Math.min(96, Math.max(48, value));
-
 // UI Components
 const Button = ({ 
   children, 
@@ -98,7 +96,10 @@ const Button = ({
 };
 
 
-const SIDEBAR_WIDTH_KEY = 'mnemo.sidebarWidth';
+const WINDOW_MODE_PARAM = new URLSearchParams(window.location.search).get('mode');
+const VIEW_PARAM = new URLSearchParams(window.location.search).get('view') as ViewState | null;
+const IS_POPUP_WINDOW = WINDOW_MODE_PARAM === 'popup';
+const WINDOW_SETTING_KEY = 'mnemo.openInSeparateWindow';
 
 export default function App() {
   const [view, setView] = useState<ViewState>('LIST');
@@ -118,10 +119,8 @@ export default function App() {
   
   const [isOfficeInitialized, setIsOfficeInitialized] = useState(false);
   const [isCompactLayout, setIsCompactLayout] = useState<boolean>(window.innerWidth < 360);
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY) || 60);
-    if (!Number.isFinite(stored)) return 60;
-    return clampSidebarWidth(stored);
+  const [openInSeparateWindow, setOpenInSeparateWindow] = useState<boolean>(() => {
+    return localStorage.getItem(WINDOW_SETTING_KEY) === 'true';
   });
   const [editorData, setEditorData] = useState<SnippetFormData>({
     title: '', subject: '', body: '', groupId: 'g1'
@@ -175,15 +174,63 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
-  }, [sidebarWidth]);
+    localStorage.setItem(WINDOW_SETTING_KEY, String(openInSeparateWindow));
+  }, [openInSeparateWindow]);
 
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === WINDOW_SETTING_KEY) {
+        setOpenInSeparateWindow(event.newValue === 'true');
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
+  useEffect(() => {
+    if (!IS_POPUP_WINDOW || !VIEW_PARAM) return;
+    const allowedViews: ViewState[] = ['LIST', 'CREATE', 'EDIT', 'FILL_VARS', 'SETTINGS', 'INFO'];
+    if (allowedViews.includes(VIEW_PARAM)) {
+      setView(VIEW_PARAM);
+    }
+  }, []);
+
+  const shouldOpenInWindow = openInSeparateWindow && !IS_POPUP_WINDOW;
+
+  const openPluginWindow = (targetView: ViewState = 'LIST') => {
+    const popupUrl = `${window.location.origin}/index.html?mode=popup&view=${targetView}`;
+
+    if (isOfficeInitialized && typeof Office !== 'undefined' && Office.context?.ui?.displayDialogAsync) {
+      Office.context.ui.displayDialogAsync(
+        popupUrl,
+        { height: 70, width: 60, displayInIframe: false },
+        (result) => {
+          if (result.status !== Office.AsyncResultStatus.Succeeded) {
+            console.error('Dialog konnte nicht geöffnet werden:', result.error);
+            window.open(popupUrl, '_blank', 'noopener,noreferrer,width=900,height=760');
+          }
+        }
+      );
+      return;
+    }
+
+    window.open(popupUrl, '_blank', 'noopener,noreferrer,width=900,height=760');
+  };
+
+  const handleNavigate = (targetView: ViewState) => {
+    if (shouldOpenInWindow) {
+      openPluginWindow(targetView);
+      return;
+    }
+    setView(targetView);
+  };
 
   // Actions
   const handleCreate = () => {
     setEditorData({ title: '', subject: '', body: '', groupId: groups[0]?.id || 'g1' });
     setCurrentSnippet(null);
-    setView('CREATE');
+    handleNavigate('CREATE');
   };
 
   const handleEdit = (snippet: Snippet) => {
@@ -255,6 +302,16 @@ export default function App() {
     }
   };
 
+  const dispatchInsertRequestToMainWindow = (finalSubject: string, finalBody: string) => {
+    localStorage.setItem(
+      INSERT_REQUEST_KEY,
+      JSON.stringify({
+        id: Date.now(),
+        subject: finalSubject,
+        body: finalBody,
+      })
+    );
+  };
 
   const executeInsert = async (snippet: Snippet, values: Record<string, string>) => {
     let finalSubject = snippet.subject;
@@ -271,9 +328,21 @@ export default function App() {
       finalBody += account.signature;
     }
 
+    if (IS_POPUP_WINDOW) {
+      dispatchInsertRequestToMainWindow(finalSubject, finalBody);
+      alert('Inhalt wurde an das Outlook-Hauptfenster übergeben und wird dort eingefügt.');
+      setView('LIST');
+      return;
+    }
+
     if (isOfficeInitialized) {
       try {
-        await insertIntoOutlook(finalSubject, finalBody);
+        await setBodyHtmlAsync(finalBody.replace(/\n/g, '<br/>'));
+        
+        if (Office.context.mailbox.item.subject) {
+          await setSubjectAsync(finalSubject);
+        }
+        
         setView('LIST');
       } catch (e) {
         console.error('Outlook Insert Fehler:', e);
@@ -327,45 +396,62 @@ ${fullText.substring(0, 100)}...`);
   };
 
   // Render Functions
-  const renderSidebar = () => {
-    const isNarrowSidebar = sidebarWidth <= 56;
-
-    return (
-    <div
-      className={`${isCompactLayout ? 'py-2 space-y-2' : 'py-4 space-y-4'} bg-white border-r border-gray-200 flex flex-col items-center`}
-      style={{ width: `${sidebarWidth}px` }}>
+  const renderSidebar = () => (
+    <div className={`${isCompactLayout ? 'w-12 py-2 space-y-2' : 'w-16 py-4 space-y-4'} bg-white border-r border-gray-200 flex flex-col items-center`}>
       <button 
-        onClick={() => setView('LIST')}
+        onClick={() => handleNavigate('LIST')}
         className={`p-2 rounded-xl transition-all ${view === 'LIST' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
         aria-label="Bibliothek"
       >
-        <Layout className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
+        <Layout className={`${isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
       <button 
         onClick={handleCreate}
         className={`p-2 rounded-xl transition-all ${view === 'CREATE' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
         aria-label="Snippet erstellen"
       >
-        <Plus className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
+        <Plus className={`${isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
       <div className="flex-grow" />
       <button 
-        onClick={() => setView('SETTINGS')}
+        onClick={() => handleNavigate('SETTINGS')}
         className={`p-2 rounded-xl transition-all ${view === 'SETTINGS' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
         aria-label="Einstellungen"
       >
-        <Settings className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
+        <Settings className={`${isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
       <button 
-        onClick={() => setView('INFO')}
+        onClick={() => handleNavigate('INFO')}
         className={`p-2 rounded-xl transition-all ${view === 'INFO' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
         aria-label="Info"
       >
-        <Info className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
+        <Info className={`${isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
     </div>
   );
 };
+
+  const renderWindowLauncher = () => (
+    <div className="flex flex-col h-full bg-gray-50 p-4 gap-4">
+      <div className="bg-white border border-gray-200 rounded-lg p-4">
+        <h2 className="text-lg font-bold text-gray-800 mb-2">Fenstermodus aktiviert</h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Mnemo öffnet Ansichten jetzt in einem separaten Fenster, damit im schmalen Outlook-Sidepane keine Bedienelemente abgeschnitten werden.
+        </p>
+        <Button onClick={() => openPluginWindow('LIST')} className="w-full">Mnemo im Fenster öffnen</Button>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+        <p className="text-xs text-gray-500 uppercase font-semibold">Direktansichten</p>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" className="w-full" onClick={() => openPluginWindow('LIST')}>Bibliothek</Button>
+          <Button variant="secondary" className="w-full" onClick={() => openPluginWindow('CREATE')}>Neu</Button>
+          <Button variant="secondary" className="w-full" onClick={() => openPluginWindow('SETTINGS')}>Settings</Button>
+          <Button variant="secondary" className="w-full" onClick={() => openPluginWindow('INFO')}>Info</Button>
+        </div>
+      </div>
+    </div>
+  );
 
   const renderSnippetList = () => {
     const filtered = snippets.filter(s => {
@@ -469,7 +555,7 @@ ${fullText.substring(0, 100)}...`);
   const renderEditor = () => (
     <div className="flex flex-col h-full bg-white">
       <div className="p-4 border-b border-gray-200 flex items-center justify-between">
-        <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700">
+        <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="font-bold text-lg">{view === 'CREATE' ? 'Neues Snippet' : 'Snippet bearbeiten'}</h2>
@@ -559,7 +645,7 @@ ${fullText.substring(0, 100)}...`);
     return (
       <div className="flex flex-col h-full bg-white">
         <div className="p-4 border-b border-gray-200 flex items-center">
-          <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
+          <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h2 className="font-bold text-gray-800">Variablen ausfüllen</h2>
@@ -569,59 +655,19 @@ ${fullText.substring(0, 100)}...`);
           {currentSnippet.variables.map(v => (
             <div key={v}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{v}</label>
-              {(() => {
-                const inputType = getInputTypeForVariable(v);
-                const inputId = `var-input-${v}`;
-
-                if (inputType === 'text') {
-                  return (
-                    <input
-                      id={inputId}
-                      type="text"
-                      className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border"
-                      value={variableValues[v] || ''}
-                      onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
-                      placeholder={`Wert für ${v}...`}
-                    />
-                  );
-                }
-
-                const Icon = inputType === 'time' ? Clock3 : Calendar;
-
-                return (
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const input = document.getElementById(inputId) as HTMLInputElement | null;
-                        if (!input) return;
-                        if (typeof input.showPicker === 'function') {
-                          input.showPicker();
-                        } else {
-                          input.focus();
-                        }
-                      }}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600"
-                      aria-label={`Auswahl für ${v} öffnen`}
-                    >
-                      <Icon className="w-4 h-4" />
-                    </button>
-                    <input
-                      id={inputId}
-                      type={inputType}
-                      className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 py-2 pr-2 pl-8 border"
-                      value={variableValues[v] || ''}
-                      onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
-                    />
-                  </div>
-                );
-              })()}
+              <input 
+                type={getInputTypeForVariable(v)}
+                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border"
+                value={variableValues[v] || ''}
+                onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
+                placeholder={getInputTypeForVariable(v) === 'text' ? `Wert für ${v}...` : undefined}
+              />
             </div>
           ))}
         </div>
 
         <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3">
-          <Button variant="secondary" onClick={() => setView('LIST')}>Abbrechen</Button>
+          <Button variant="secondary" onClick={() => handleNavigate('LIST')}>Abbrechen</Button>
           <Button onClick={() => executeInsert(currentSnippet, variableValues)} icon={Send}>
             Einfügen
           </Button>
@@ -633,26 +679,27 @@ ${fullText.substring(0, 100)}...`);
   const renderSettings = () => (
     <div className="flex flex-col h-full bg-white overflow-y-auto">
       <div className="p-4 border-b border-gray-200 flex items-center">
-        <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
+        <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="font-bold text-lg">Einstellungen</h2>
       </div>
 
       <div className="p-6 space-y-8">
-        <section className="bg-gray-50 border rounded-lg p-4 space-y-3">
-          <h3 className="font-bold text-gray-900">Ansicht</h3>
-          <label className="block text-sm font-medium text-gray-800">Navigationsleiste Breite</label>
-          <input
-            type="range"
-            min={48}
-            max={96}
-            step={2}
-            value={sidebarWidth}
-            onChange={(e) => setSidebarWidth(clampSidebarWidth(Number(e.target.value)))}
-            className="w-full"
-          />
-          <div className="text-xs text-gray-500">Aktuell: {sidebarWidth}px (wird gespeichert).</div>
+        <section className="bg-gray-50 border rounded-lg p-4">
+          <h3 className="font-bold text-gray-900 mb-2">Ansicht</h3>
+          <label className="flex items-center justify-between gap-3 cursor-pointer">
+            <div>
+              <div className="text-sm font-medium text-gray-800">Plugin im separaten Fenster öffnen</div>
+              <div className="text-xs text-gray-500">Empfohlen bei schmalem Sidepane in Outlook.</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={openInSeparateWindow}
+              onChange={(e) => setOpenInSeparateWindow(e.target.checked)}
+              className="h-4 w-4"
+            />
+          </label>
         </section>
 
         <div className={`p-3 rounded-lg flex items-center gap-3 ${isOfficeInitialized ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200'}`}>
@@ -713,7 +760,7 @@ ${fullText.substring(0, 100)}...`);
   const renderInfo = () => (
     <div className="flex flex-col h-full bg-white overflow-y-auto">
       <div className="p-4 border-b border-gray-200 flex items-center">
-        <button onClick={() => setView('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
+        <button onClick={() => handleNavigate('LIST')} className="text-gray-500 hover:text-gray-700 mr-3">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="font-bold">Info</h2>
@@ -730,13 +777,19 @@ ${fullText.substring(0, 100)}...`);
 
   return (
     <div className="flex w-full h-screen bg-white text-gray-900 overflow-hidden">
-      {renderSidebar()}
+      {!IS_POPUP_WINDOW && renderSidebar()}
       <div className="flex-1 flex flex-col min-w-0">
-        {view === 'LIST' && renderSnippetList()}
-        {(view === 'CREATE' || view === 'EDIT') && renderEditor()}
-        {view === 'FILL_VARS' && renderFillVars()}
-        {view === 'SETTINGS' && renderSettings()}
-        {view === 'INFO' && renderInfo()}
+        {shouldOpenInWindow ? (
+          renderWindowLauncher()
+        ) : (
+          <>
+            {view === 'LIST' && renderSnippetList()}
+            {(view === 'CREATE' || view === 'EDIT') && renderEditor()}
+            {view === 'FILL_VARS' && renderFillVars()}
+            {view === 'SETTINGS' && renderSettings()}
+            {view === 'INFO' && renderInfo()}
+          </>
+        )}
       </div>
     </div>
   );
