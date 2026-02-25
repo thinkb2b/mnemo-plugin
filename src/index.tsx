@@ -32,9 +32,15 @@ function mountApp() {
   }
 
   const root = ReactDOM.createRoot(container);
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
+
+  try {
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
+  } catch (error) {
+    console.error('Render-Fehler:', error);
+    container.innerHTML = '<div style="padding:12px;font-family:Segoe UI, sans-serif;color:#b91c1c;">Mnemo konnte nicht geladen werden.</div>';
+  }
 }

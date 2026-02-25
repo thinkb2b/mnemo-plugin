@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Layout, Plus, Settings, Mail, Search, Folder, Edit3, Trash2, Send, 
-  ArrowLeft, Sparkles, RefreshCw, X, Save, Link, Link2Off, Info
+  ArrowLeft, Sparkles, RefreshCw, X, Save, Link, Link2Off, Info, Calendar, Clock3
 } from 'lucide-react';
 import type { Snippet, Group, ViewState, SnippetFormData, SenderAccount } from './types';
 import { generateSnippet } from './services/geminiService';
@@ -48,6 +48,27 @@ const extractVariables = (text: string): string[] => {
   return Array.from(matches);
 };
 
+
+const getInputTypeForVariable = (variableName: string): 'text' | 'date' | 'time' | 'datetime-local' => {
+  const normalized = variableName.toLowerCase();
+
+  if (normalized.includes('datum') || normalized.includes('date')) {
+    return 'date';
+  }
+
+  if (normalized.includes('uhrzeit') || normalized.includes('zeit') || normalized.includes('time')) {
+    return 'time';
+  }
+
+  if (normalized.includes('termin') || normalized.includes('datetime')) {
+    return 'datetime-local';
+  }
+
+  return 'text';
+};
+
+const clampSidebarWidth = (value: number) => Math.min(96, Math.max(48, value));
+
 // UI Components
 const Button = ({ 
   children, 
@@ -76,13 +97,34 @@ const Button = ({
   );
 };
 
+
+const SIDEBAR_WIDTH_KEY = 'mnemo.sidebarWidth';
+
+
+const safeGetStorage = (key: string): string | null => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    console.warn('localStorage read fehlgeschlagen:', error);
+    return null;
+  }
+};
+
+const safeSetStorage = (key: string, value: string): void => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn('localStorage write fehlgeschlagen:', error);
+  }
+};
+
 export default function App() {
   const [view, setView] = useState<ViewState>('LIST');
   const [snippets, setSnippets] = useState<Snippet[]>(INITIAL_SNIPPETS);
   const [groups, setGroups] = useState<Group[]>(INITIAL_GROUPS);
   const [accounts, setAccounts] = useState<SenderAccount[]>(INITIAL_ACCOUNTS);
   
-  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentSnippet, setCurrentSnippet] = useState<Snippet | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
@@ -93,10 +135,87 @@ export default function App() {
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   
   const [isOfficeInitialized, setIsOfficeInitialized] = useState(false);
+  const [isCompactLayout, setIsCompactLayout] = useState<boolean>(window.innerWidth < 360);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    const stored = Number(safeGetStorage(SIDEBAR_WIDTH_KEY) || 60);
+    if (!Number.isFinite(stored)) return 60;
+    return clampSidebarWidth(stored);
+  });
   const [editorData, setEditorData] = useState<SnippetFormData>({
     title: '', subject: '', body: '', groupId: 'g1'
   });
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const setSubjectAsync = (subject: string): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.subject.setAsync(subject, (result: Office.AsyncResult<void>) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve();
+        } else {
+          reject(new Error(result.error?.message || 'Betreff konnte nicht gesetzt werden.'));
+        }
+      });
+    });
+  };
+
+  const getBodyTypeAsync = (): Promise<Office.CoercionType> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.body.getTypeAsync((result: Office.AsyncResult<Office.CoercionType>) => {
+        if (result.status === Office.AsyncResultStatus.Succeeded) {
+          resolve(result.value || Office.CoercionType.Html);
+        } else {
+          reject(new Error(result.error?.message || 'Body-Typ konnte nicht gelesen werden.'));
+        }
+      });
+    });
+  };
+
+  const insertSelectedBodyAsync = (content: string, coercionType: Office.CoercionType): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.body.setSelectedDataAsync(
+        content,
+        { coercionType },
+        (result: Office.AsyncResult<void>) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve();
+          } else {
+            reject(new Error(result.error?.message || 'Body konnte nicht eingefügt werden.'));
+          }
+        }
+      );
+    });
+  };
+
+  const getBodyAsync = (coercionType: Office.CoercionType): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.body.getAsync(
+        coercionType,
+        (result: Office.AsyncResult<string>) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve(result.value || '');
+          } else {
+            reject(new Error(result.error?.message || 'Body konnte nicht gelesen werden.'));
+          }
+        }
+      );
+    });
+  };
+
+  const setBodyAsync = (content: string, coercionType: Office.CoercionType): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      Office.context.mailbox.item.body.setAsync(
+        content,
+        { coercionType },
+        (result: Office.AsyncResult<void>) => {
+          if (result.status === Office.AsyncResultStatus.Succeeded) {
+            resolve();
+          } else {
+            reject(new Error(result.error?.message || 'Body konnte nicht gesetzt werden.'));
+          }
+        }
+      );
+    });
+  };
 
   // Office Initialization
   useEffect(() => {
@@ -109,6 +228,17 @@ export default function App() {
       });
     }
   }, []);
+
+  useEffect(() => {
+    const handleResize = () => setIsCompactLayout(window.innerWidth < 360);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    safeSetStorage(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
+
 
   // Actions
   const handleCreate = () => {
@@ -132,6 +262,21 @@ export default function App() {
     if (confirm('Möchten Sie dieses Snippet wirklich löschen?')) {
       setSnippets(prev => prev.filter(s => s.id !== id));
     }
+  };
+
+
+  const toggleGroupSelection = (groupId: string | null) => {
+    if (!groupId) {
+      setSelectedGroups([]);
+      return;
+    }
+
+    setSelectedGroups((prev) => {
+      if (prev.includes(groupId)) {
+        return prev.filter((id) => id !== groupId);
+      }
+      return [...prev, groupId];
+    });
   };
 
   const handleSave = () => {
@@ -178,6 +323,25 @@ export default function App() {
       executeInsert(snippet, {});
     }
   };
+  const insertIntoOutlook = async (finalSubject: string, finalBody: string) => {
+    const bodyType = await getBodyTypeAsync();
+    const isHtml = bodyType === Office.CoercionType.Html;
+    const content = isHtml ? finalBody.replace(/\n/g, '<br/>') : finalBody;
+
+    try {
+      await insertSelectedBodyAsync(content, bodyType);
+    } catch (error) {
+      console.warn('setSelectedDataAsync fehlgeschlagen, fallback auf setAsync:', error);
+      const currentBody = await getBodyAsync(bodyType);
+      const merged = isHtml ? `${currentBody}<br/>${content}` : `${currentBody}\n\n${content}`;
+      await setBodyAsync(merged, bodyType);
+    }
+
+    if (Office.context.mailbox.item.subject) {
+      await setSubjectAsync(finalSubject);
+    }
+  };
+
 
   const executeInsert = async (snippet: Snippet, values: Record<string, string>) => {
     let finalSubject = snippet.subject;
@@ -196,25 +360,30 @@ export default function App() {
 
     if (isOfficeInitialized) {
       try {
-        await Office.context.mailbox.item.body.setSelectedDataAsync(
-          finalBody.replace(/\n/g, '<br/>'),
-          { coercionType: Office.CoercionType.Html }
-        );
-        
-        if (Office.context.mailbox.item.subject) {
-          await Office.context.mailbox.item.subject.setAsync(finalSubject);
-        }
-        
+        await insertIntoOutlook(finalSubject, finalBody);
         setView('LIST');
       } catch (e) {
         console.error('Outlook Insert Fehler:', e);
-        alert("Fehler beim Einfügen in Outlook.");
+        alert('Fehler beim Einfügen in Outlook.');
       }
     } else {
-      const fullText = `Betreff: ${finalSubject}\n\n${finalBody}`;
-      navigator.clipboard.writeText(fullText);
-      alert(`In Zwischenablage kopiert (Browser-Modus):\n\n${fullText.substring(0, 100)}...`);
+      const fullText = `Betreff: ${finalSubject}
+
+${finalBody}`;
       setView('LIST');
+
+      try {
+        await navigator.clipboard.writeText(fullText);
+        alert(`In Zwischenablage kopiert (Browser-Modus):
+
+${fullText.substring(0, 100)}...`);
+      } catch {
+        alert(`Einfügen außerhalb von Outlook nicht direkt möglich.
+
+Bitte Text manuell übernehmen:
+
+${fullText.substring(0, 200)}...`);
+      }
     }
   };
 
@@ -245,7 +414,7 @@ export default function App() {
   const handleDeleteGroup = (id: string) => {
     if (confirm('Kategorie löschen?')) {
       setGroups(groups.filter(g => g.id !== id));
-      if (selectedGroup === id) setSelectedGroup(null);
+      setSelectedGroups(prev => prev.filter(groupId => groupId !== id));
       if (editingGroupId === id) {
         setEditingGroupId(null);
         setNewGroupName('');
@@ -254,39 +423,49 @@ export default function App() {
   };
 
   // Render Functions
-  const renderSidebar = () => (
-    <div className="w-16 bg-white border-r border-gray-200 flex flex-col items-center py-4 space-y-4">
+  const renderSidebar = () => {
+    const isNarrowSidebar = sidebarWidth <= 56;
+
+    return (
+    <div
+      className={`${isCompactLayout ? 'py-2 space-y-2' : 'py-4 space-y-4'} bg-white border-r border-gray-200 flex flex-col items-center`}
+      style={{ width: `${sidebarWidth}px` }}>
       <button 
         onClick={() => setView('LIST')}
         className={`p-2 rounded-xl transition-all ${view === 'LIST' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
+        aria-label="Bibliothek"
       >
-        <Layout className="w-6 h-6" />
+        <Layout className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
       <button 
         onClick={handleCreate}
         className={`p-2 rounded-xl transition-all ${view === 'CREATE' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
+        aria-label="Snippet erstellen"
       >
-        <Plus className="w-6 h-6" />
+        <Plus className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
       <div className="flex-grow" />
       <button 
         onClick={() => setView('SETTINGS')}
         className={`p-2 rounded-xl transition-all ${view === 'SETTINGS' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
+        aria-label="Einstellungen"
       >
-        <Settings className="w-6 h-6" />
+        <Settings className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
       <button 
         onClick={() => setView('INFO')}
         className={`p-2 rounded-xl transition-all ${view === 'INFO' ? 'bg-blue-100 text-blue-600' : 'text-gray-400 hover:bg-gray-100'}`}
+        aria-label="Info"
       >
-        <Info className="w-6 h-6" />
+        <Info className={`${isNarrowSidebar ? 'w-4 h-4' : isCompactLayout ? 'w-5 h-5' : 'w-6 h-6'}`} />
       </button>
     </div>
   );
+};
 
   const renderSnippetList = () => {
     const filtered = snippets.filter(s => {
-      const matchesGroup = selectedGroup ? s.groupId === selectedGroup : true;
+      const matchesGroup = selectedGroups.length > 0 ? selectedGroups.includes(s.groupId) : true;
       const matchesSearch = s.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                             s.subject.toLowerCase().includes(searchQuery.toLowerCase());
       return matchesGroup && matchesSearch;
@@ -294,9 +473,9 @@ export default function App() {
 
     return (
       <div className="flex flex-col h-full bg-gray-50">
-        <div className="bg-white p-4 border-b border-gray-200 space-y-3">
+        <div className={`${isCompactLayout ? 'p-3 space-y-2' : 'p-4 space-y-3'} bg-white border-b border-gray-200`}>
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-bold text-gray-800">Bibliothek</h1>
+            <h1 className={`${isCompactLayout ? 'text-lg' : 'text-xl'} font-bold text-gray-800`}>Bibliothek</h1>
             <Button onClick={handleCreate} icon={Plus} className="h-8 text-xs">Neu</Button>
           </div>
           
@@ -311,27 +490,43 @@ export default function App() {
             />
           </div>
 
-          <div className="flex items-center space-x-2 overflow-x-auto">
-            <button 
-              onClick={() => setSelectedGroup(null)}
-              className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${!selectedGroup ? 'bg-gray-800 text-white' : 'bg-gray-200 text-gray-600'}`}
-            >
-              Alle
-            </button>
-            {groups.map(g => (
-              <button 
-                key={g.id}
-                onClick={() => setSelectedGroup(g.id)}
-                className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap flex items-center ${selectedGroup === g.id ? 'bg-blue-600 text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
+          <div className="bg-gray-100 rounded-md p-2">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-[11px] uppercase tracking-wide text-gray-500">Kategorien</label>
+              {selectedGroups.length > 0 && (
+                <button
+                  onClick={() => setSelectedGroups([])}
+                  className="text-[11px] text-blue-600 hover:text-blue-700"
+                >
+                  Zurücksetzen
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1">
+              <button
+                onClick={() => toggleGroupSelection(null)}
+                className={`px-2 py-1 rounded-full text-[11px] font-medium border ${selectedGroups.length === 0 ? 'bg-gray-800 text-white border-gray-800' : 'bg-white text-gray-700 border-gray-200'}`}
               >
-                <div className={`w-2 h-2 rounded-full mr-2 ${g.color}`} />
-                {g.name}
+                Alle
               </button>
-            ))}
+              {groups.map(g => {
+                const isSelected = selectedGroups.includes(g.id);
+                return (
+                  <button
+                    key={g.id}
+                    onClick={() => toggleGroupSelection(g.id)}
+                    className={`px-2 py-1 rounded-full text-[11px] font-medium border flex items-center gap-1 ${isSelected ? 'bg-blue-50 text-blue-700 border-blue-300' : 'bg-white text-gray-700 border-gray-200'}`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${g.color}`} />
+                    {g.name}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className={`${isCompactLayout ? 'p-3 space-y-2' : 'p-4 space-y-3'} flex-1 overflow-y-auto`}>
           {filtered.length === 0 ? (
             <div className="text-center text-gray-500 mt-10">
               <p>Keine Snippets gefunden.</p>
@@ -340,7 +535,7 @@ export default function App() {
             filtered.map(snippet => {
               const group = groups.find(g => g.id === snippet.groupId);
               return (
-                <div key={snippet.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow group">
+                <div key={snippet.id} className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow group min-w-0">
                   <div className="p-4 cursor-pointer" onClick={() => handlePrepareInsert(snippet)}>
                     <div className="flex justify-between items-start mb-1">
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase text-white ${group?.color || 'bg-gray-400'}`}>
@@ -361,8 +556,8 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                    <h3 className="font-semibold text-gray-900 mb-1">{snippet.title}</h3>
-                    <p className="text-sm text-gray-500 line-clamp-2">{snippet.body}</p>
+                    <h3 className="font-semibold text-gray-900 mb-1 truncate">{snippet.title}</h3>
+                    <p className="text-sm text-gray-500 break-words">{snippet.body}</p>
                     
                     {snippet.variables.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1">
@@ -486,12 +681,53 @@ export default function App() {
           {currentSnippet.variables.map(v => (
             <div key={v}>
               <label className="block text-sm font-medium text-gray-700 mb-1">{v}</label>
-              <input 
-                className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border"
-                value={variableValues[v] || ''}
-                onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
-                placeholder={`Wert für ${v}...`}
-              />
+              {(() => {
+                const inputType = getInputTypeForVariable(v);
+                const inputId = `var-input-${v}`;
+
+                if (inputType === 'text') {
+                  return (
+                    <input
+                      id={inputId}
+                      type="text"
+                      className="w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 border"
+                      value={variableValues[v] || ''}
+                      onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
+                      placeholder={`Wert für ${v}...`}
+                    />
+                  );
+                }
+
+                const Icon = inputType === 'time' ? Clock3 : Calendar;
+
+                return (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const input = document.getElementById(inputId) as HTMLInputElement | null;
+                        if (!input) return;
+                        if (typeof input.showPicker === 'function') {
+                          input.showPicker();
+                        } else {
+                          input.focus();
+                        }
+                      }}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-blue-600"
+                      aria-label={`Auswahl für ${v} öffnen`}
+                    >
+                      <Icon className="w-4 h-4" />
+                    </button>
+                    <input
+                      id={inputId}
+                      type={inputType}
+                      className="mnemo-picker-input w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 py-2 pr-2 pl-8 border"
+                      value={variableValues[v] || ''}
+                      onChange={e => setVariableValues({ ...variableValues, [v]: e.target.value })}
+                    />
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -516,6 +752,21 @@ export default function App() {
       </div>
 
       <div className="p-6 space-y-8">
+        <section className="bg-gray-50 border rounded-lg p-4 space-y-3">
+          <h3 className="font-bold text-gray-900">Ansicht</h3>
+          <label className="block text-sm font-medium text-gray-800">Navigationsleiste Breite</label>
+          <input
+            type="range"
+            min={48}
+            max={96}
+            step={2}
+            value={sidebarWidth}
+            onChange={(e) => setSidebarWidth(clampSidebarWidth(Number(e.target.value)))}
+            className="w-full"
+          />
+          <div className="text-xs text-gray-500">Aktuell: {sidebarWidth}px (wird gespeichert).</div>
+        </section>
+
         <div className={`p-3 rounded-lg flex items-center gap-3 ${isOfficeInitialized ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-yellow-50 text-yellow-800 border border-yellow-200'}`}>
           {isOfficeInitialized ? <Link className="w-5 h-5" /> : <Link2Off className="w-5 h-5" />}
           <div>
@@ -592,7 +843,7 @@ export default function App() {
   return (
     <div className="flex w-full h-screen bg-white text-gray-900 overflow-hidden">
       {renderSidebar()}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         {view === 'LIST' && renderSnippetList()}
         {(view === 'CREATE' || view === 'EDIT') && renderEditor()}
         {view === 'FILL_VARS' && renderFillVars()}
