@@ -100,6 +100,24 @@ const Button = ({
 
 const SIDEBAR_WIDTH_KEY = 'mnemo.sidebarWidth';
 
+
+const safeGetStorage = (key: string): string | null => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    console.warn('localStorage read fehlgeschlagen:', error);
+    return null;
+  }
+};
+
+const safeSetStorage = (key: string, value: string): void => {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch (error) {
+    console.warn('localStorage write fehlgeschlagen:', error);
+  }
+};
+
 export default function App() {
   const [view, setView] = useState<ViewState>('LIST');
   const [snippets, setSnippets] = useState<Snippet[]>(INITIAL_SNIPPETS);
@@ -119,7 +137,7 @@ export default function App() {
   const [isOfficeInitialized, setIsOfficeInitialized] = useState(false);
   const [isCompactLayout, setIsCompactLayout] = useState<boolean>(window.innerWidth < 360);
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const stored = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY) || 60);
+    const stored = Number(safeGetStorage(SIDEBAR_WIDTH_KEY) || 60);
     if (!Number.isFinite(stored)) return 60;
     return clampSidebarWidth(stored);
   });
@@ -218,7 +236,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    safeSetStorage(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
   }, [sidebarWidth]);
 
 
