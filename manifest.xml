@@ -13,13 +13,13 @@
   <DisplayName DefaultValue="Mnemo Intelligent Snippets" />
   <Description DefaultValue="Textbausteine mit KI-Unterstützung für Outlook" />
   
-  <!-- WICHTIG: Ersetze DEINE_APP_URL durch deine echte Render.com URL -->
-  <IconUrl DefaultValue="https://DEINE_APP_URL.onrender.com/icon-64.png" />
-  <HighResolutionIconUrl DefaultValue="https://DEINE_APP_URL.onrender.com/icon-128.png" />
-  <SupportUrl DefaultValue="https://DEINE_APP_URL.onrender.com" />
+  <!-- Produktions-URL des Add-ins -->
+  <IconUrl DefaultValue="https://mnemo-plugin.onrender.com/icon-64.png" />
+  <HighResolutionIconUrl DefaultValue="https://mnemo-plugin.onrender.com/icon-128.png" />
+  <SupportUrl DefaultValue="https://mnemo-plugin.onrender.com" />
   
   <AppDomains>
-    <AppDomain>https://DEINE_APP_URL.onrender.com</AppDomain>
+    <AppDomain>https://mnemo-plugin.onrender.com</AppDomain>
   </AppDomains>
 
   <Hosts>
@@ -35,7 +35,7 @@
   <FormSettings>
     <Form xsi:type="ItemEdit">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://DEINE_APP_URL.onrender.com/index.html" />
+        <SourceLocation DefaultValue="https://mnemo-plugin.onrender.com/index.html" />
       </DesktopSettings>
     </Form>
   </FormSettings>
@@ -79,12 +79,12 @@
     
     <Resources>
       <bt:Images>
-        <bt:Image id="icon16" DefaultValue="https://DEINE_APP_URL.onrender.com/icon-16.png" />
-        <bt:Image id="icon32" DefaultValue="https://DEINE_APP_URL.onrender.com/icon-32.png" />
-        <bt:Image id="icon80" DefaultValue="https://DEINE_APP_URL.onrender.com/icon-80.png" />
+        <bt:Image id="icon16" DefaultValue="https://mnemo-plugin.onrender.com/icon-16.png" />
+        <bt:Image id="icon32" DefaultValue="https://mnemo-plugin.onrender.com/icon-32.png" />
+        <bt:Image id="icon80" DefaultValue="https://mnemo-plugin.onrender.com/icon-80.png" />
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="taskpaneUrl" DefaultValue="https://DEINE_APP_URL.onrender.com/index.html" />
+        <bt:Url id="taskpaneUrl" DefaultValue="https://mnemo-plugin.onrender.com/index.html" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="groupLabel" DefaultValue="Mnemo" />
